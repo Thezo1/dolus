@@ -1,3 +1,5 @@
+// NOTE: Never forget to clamp packing colors, saves you a whole lot of headache
+
 #ifndef _H_DOLUSMATH
 #define _H_DOLUSMATH
 
@@ -357,22 +359,22 @@ extern inline v4 v4_scalar_add(v4 A, f32 S)
     return(result);
 }
 
-extern inline f32 dot_v4(v4 A, v4 B)
+extern inline f32 v4_dot(v4 A, v4 B)
 {
     f32 result = A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w;
     return(result);
 }
 
-extern inline f32 length_sq_v4(v4 A)
+extern inline f32 v4_length_sq(v4 A)
 {
-    f32 result = dot_v4(A, A);
+    f32 result = v4_dot(A, A);
     return(result);
 }
 
-extern inline v4 normalize_v4(v4 A)
+extern inline v4 v4_normalize(v4 A)
 {
     v4 result = {};
-    f32 len_sq = length_sq_v4(A);
+    f32 len_sq = v4_length_sq(A);
     if(len_sq > square(0.0001f))
     {
         result = v4_scalar_mul(A, (1.0f/square_root(len_sq)));
@@ -409,38 +411,6 @@ extern inline f32 POW(f32 B, f32 P)
     return(result);
 }
 
-// NOTE: Don't really know if the disparity between big and little endian
-// id Correct
-extern inline u32 pack_color_little(v3 color)
-{
-    u32 result;
-
-    u32 r = (u32)(color.x * 255);
-    u32 g = (u32)(color.y * 255);
-    u32 b = (u32)(color.z * 255);
-
-    result = (b << 8*0) | 
-             (g << 8*1) | 
-             (r << 8*2);
-
-    return(result);
-}
-
-extern inline u32 pack_color_big(v3 color)
-{
-    u32 result;
-
-    u32 r = (u32)(color.x * 255);
-    u32 g = (u32)(color.y * 255);
-    u32 b = (u32)(color.z * 255);
-
-    result = (b << 8*2) | 
-             (g << 8*1) | 
-             (r << 8*0);
-
-    return(result);
-}
-
 extern inline f32 clamp(f32 num, f32 min, f32 max)
 {
     if(num > max)
@@ -453,6 +423,37 @@ extern inline f32 clamp(f32 num, f32 min, f32 max)
         return(min);
     }
     return(num);
+}
+
+// NOTE: Don't really know if the disparity between big and little endian
+// id Correct
+extern inline u32 pack_color_little(v3 color)
+{
+    u32 result;
+    u32 r = (u32)(clamp(color.x, 0.0f, 1.0f) * 255);
+    u32 g = (u32)(clamp(color.y, 0.0f, 1.0f) * 255);
+    u32 b = (u32)(clamp(color.z, 0.0f, 1.0f) * 255);
+
+    result = (b << 8*0) | 
+             (g << 8*1) | 
+             (r << 8*2);
+
+    return(result);
+}
+
+extern inline u32 pack_color_big(v3 color)
+{
+    u32 result;
+
+    u32 r = (u32)(clamp(color.x, 0.0f, 1.0f) * 255);
+    u32 g = (u32)(clamp(color.y, 0.0f, 1.0f) * 255);
+    u32 b = (u32)(clamp(color.z, 0.0f, 1.0f) * 255);
+
+    result = (b << 8*2) | 
+             (g << 8*1) | 
+             (r << 8*0);
+
+    return(result);
 }
 
 typedef struct m4x4
@@ -492,25 +493,6 @@ extern inline m4x4 m4x4_mul(m4x4 a, m4x4 b)
 		a.rows[3].x * b.rows[0].w  +  a.rows[3].y * b.rows[1].w  +  a.rows[3].z * b.rows[2].w  +  a.rows[3].w * b.rows[3].w
 	);
     return(result);
-}
-
-
-extern inline v3 m4x4_mul_point(m4x4 m, v3 pt)
-{
-	return V3(
-		(pt.x * m.rows[0].x) + (pt.y * m.rows[1].x) + (pt.z * m.rows[2].x) + m.rows[3].x,
-		(pt.x * m.rows[0].y) + (pt.y * m.rows[1].y) + (pt.z * m.rows[2].y) + m.rows[3].y,
-		(pt.x * m.rows[0].z) + (pt.y * m.rows[1].z) + (pt.z * m.rows[2].z) + m.rows[3].z
-	);
-}
-
-extern inline v3 m4x4_mul_vector(m4x4 m, v3 v)
-{
-	return V3(
-		(v.x * m.rows[0].x) + (v.y * m.rows[1].x) + (v.z * m.rows[2].x),
-		(v.x * m.rows[0].y) + (v.y * m.rows[1].y) + (v.z * m.rows[2].y),
-		(v.x * m.rows[0].z) + (v.y * m.rows[1].z) + (v.z * m.rows[2].z)
-	);
 }
 
 extern inline m4x4 m4x4_transpose(m4x4 a)
@@ -781,6 +763,13 @@ extern inline v4 m4x4_mul_v4(m4x4 mat, v4 v)
 extern inline v4 v4_transform(m4x4 m, v4 v)
 {
     v4 result = m4x4_mul_v4(m, v);
+    return(result);
+}
+
+extern inline v4 v4_reflect(v4 I, v4 N) 
+{
+    v4 result = {};
+    result = v4_sub(I, v4_scalar_mul(N, (2.0f * v4_dot(I, N))));
     return(result);
 }
 
