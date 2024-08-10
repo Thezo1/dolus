@@ -124,6 +124,69 @@ void save_to_ppm(ImageU32 image, const char *filename)
     fclose(file);
 }
 
+internal Computation prepare_computation(World *world, X intersection, Ray *ray)
+{
+    Computation result = {};
+    result.t = intersection.t;
+    result.object_index = intersection.object_index;
+    
+    Sphere sphere = world->spheres[result.object_index];
+    
+    result.point = ray_position(*ray, result.t);
+    result.eyev = v4_neg(ray->direction);
+    result.normalv = normal_at_point(sphere, result.point);
+    if(v4_dot(result.normalv, result.eyev) < 0)
+    {
+        result.inside = true;
+        result.normalv = v4_neg(result.normalv);
+    }
+    else
+    {
+        result.inside = false;
+    }
+    return(result);
+}
+
+internal WorldIntersects intersect_world(World *world, Ray *ray)
+{
+    WorldIntersects result = {};
+    result.intersect_count = 0;
+
+    // NOTE: Spheres are always first in the world
+    for(int sphere_index = 0;
+        sphere_index < world->sphere_count;
+        ++sphere_index)
+    {
+        Sphere sphere = world->spheres[sphere_index];
+        Tvalue t = ray_intersect_sphere(*ray, sphere);
+
+        if(t.hit)
+        {
+            X t_value = {};
+            if(t.t1 > 0)
+            {
+                t_value.t = t.t1;
+                t_value.object_index = sphere_index;
+                result.t_values[result.intersect_count++] = t_value;
+                if(t.t2 > 0)
+                {
+                    t_value.t = t.t2;
+                    t_value.object_index = sphere_index;
+                    result.t_values[result.intersect_count++] = t_value;
+                }
+            }
+            else if(t.t2 > 0)
+            {
+                t_value.t = t.t2;
+                t_value.object_index = sphere_index;
+                result.t_values[result.intersect_count++] = t_value;                
+            }
+        }
+    }
+
+    return(result);
+}
+
 int main(int argc, char *argv[])
 {
     // v3 BackgroundColor = V3(0.2f, 0.3f, 0.5f);
@@ -133,15 +196,89 @@ int main(int argc, char *argv[])
     v3 color3 = v3_mul(color1, color2);
 
     ImageU32 image = {};
-    image.width = 1290;
-    image.height = 720;
+    image.width = 1280;
+    image.height = 750;
+
+    // scene
+    m4x4 transform = m4x4_scale_matrix(V3(10.0f, 0.01f, 10.0f));
     
-    Sphere s = sphere(V3(0.0f, 0.0f, 0.0f), 1);
-    s.material.color = color1;
+    Sphere floor = sphere(origin(), 1.0f);
+    set_sphere_transform(&floor, transform);
+    floor.material.color = V3(1.0f, 0.9f, 0.9f);
+    floor.material.specular = 0.0f;
+
+    Sphere left_wall = sphere(origin(), 1.0f);
+    m4x4 translate = m4x4_translation_matrix(V3(0.0f, 0.0f, 5.0f));
+    m4x4 rotationY = m4x4_rotateY_matrix(-PI32/4);
+    m4x4 rotationX = m4x4_rotateX_matrix(PI32/2);
     
-    PointLight light = {0};
-    light.position = Point(-10.0f, 10.0f, -10.0f);
-    light.intensity = V3(1.0f, 1.0f, 1.0f);
+    m4x4 scale = m4x4_scale_matrix(V3(10.0f, 0.01f, 10.0f));
+
+    transform = m4x4_mul(translate, m4x4_mul(rotationY, m4x4_mul(rotationX, scale)));
+    set_sphere_transform(&left_wall, transform);
+    left_wall.material = floor.material;
+
+    Sphere right_wall = sphere(origin(), 1.0f);
+    translate = m4x4_translation_matrix(V3(0.0f, 0.0f, 5.0f));
+    rotationY = m4x4_rotateY_matrix(PI32/4);
+    rotationX = m4x4_rotateX_matrix(PI32/2);
+    scale = m4x4_scale_matrix(V3(10.0f, 0.01f, 10.0f));
+    
+    transform = m4x4_mul(translate, m4x4_mul(rotationY, m4x4_mul(rotationX, scale)));
+    set_sphere_transform(&right_wall, transform);
+    right_wall.material = floor.material;
+
+    Sphere middle = sphere(origin(), 1.0f);
+    middle.material.color = V3(0.1f, 1.0f, 0.5f);
+    middle.material.diffuse = 0.7f;
+    middle.material.specular = 0.3f;
+    transform = m4x4_translation_matrix(V3(-0.5f, 1.0f, 0.5f));
+    set_sphere_transform(&middle, transform);
+
+    Sphere right = sphere(origin(), 1.0f);
+    right.material.color = V3(0.5f, 1.0f, 0.5f);
+    right.material.diffuse = 0.7f;
+    right.material.specular = 0.3f;
+    
+    transform = m4x4_mul(m4x4_translation_matrix(V3(1.5f, 0.5f, 0.5f)), m4x4_scale_matrix(V3(0.5f, 0.5f, 0.5f)));
+    set_sphere_transform(&right, transform);
+
+    Sphere left = sphere(origin(), 1.0f);
+    left.material.color = V3(0.5f, 0.3f, 0.01f);
+    left.material.diffuse = 0.7f;
+    left.material.specular = 0.3f;
+    
+    transform = m4x4_mul(m4x4_translation_matrix(V3(-1.5f, 0.33f, -0.75f)), m4x4_scale_matrix(V3(0.33f, 0.33f, 0.33f)));
+    set_sphere_transform(&left, transform);    
+    
+    PointLight light1 = {0};
+    light1.position = Point(-10.0f, 10.0f, -10.0f);
+    light1.intensity = V3(1.0f, 1.0f, 1.0f);
+
+    PointLight light2 = {0};
+    light2.position = Point(10.0f, 10.0f, -10.0f);
+    light2.intensity = V3(0.35f, 0.2f, 0.35f);
+
+    Sphere spheres[6] = {};
+    spheres[0] = floor;
+    spheres[1] = left_wall;
+    spheres[2] = right_wall;
+    spheres[3] = middle;
+    spheres[4] = right;
+    spheres[5] = left;
+
+    PointLight lights[2] = {};
+    lights[0] = light1;
+    lights[1] = light2;
+
+    World world = {};
+    world.object_count = 6;
+    world.sphere_count = 6;
+    world.spheres = spheres;
+    world.light_count = 2;
+    world.lights = lights;
+    
+    // scene
     
     f32 wall_z = 10.0f;
     f32 wall_height = 7.0f;
@@ -166,6 +303,14 @@ int main(int argc, char *argv[])
     u32 OutputPixelSize = get_pixel_size(image);
     image.pixels = (u32 *)malloc(OutputPixelSize);
 
+    v4 from = Point(0.0f, 1.5f, -5.0f);
+    v4 to = Point(0.0f, 1.0f, 0.0f);
+    v4 up = Vector(0.0f, 1.0f, 0.0f);
+    m4x4 world_view_transform = view_transform(from, to, up);
+
+    Camera cam = camera(image.width, image.height, PI32/3);
+    cam.transform = world_view_transform;
+
     // NOTE: The y axis is flipped, that's why I am using top to bottom in y
     u32 *Out = image.pixels;
     for( int y = image.height - 1;
@@ -176,33 +321,43 @@ int main(int argc, char *argv[])
              x < image.width;
              ++x)
         {
-            f32 world_x = -half_wall_width + pixel_width * x;
-            f32 world_y = half_wall_heigth - pixel_height * y;
-            v4 position = Point(world_x, world_y, wall_z);
+            f32 x_offset = (x + 0.5) * cam.pixel_size;
+            f32 y_offset = (y + 0.5) * cam.pixel_size;
 
+            f32 worldX = cam.half_width - x_offset;
+            f32 worldY = cam.half_height - y_offset;
+
+            m4x4 invert = {};
+            m4x4_invert(cam.transform, &invert);
+            v4 pixel = m4x4_mul_v4(invert, Point(worldX, worldY, -1));
+            v4 origin = m4x4_mul_v4(invert, Point(0.0f, 0.0f, 0.0f));
+            v4 direction = v4_normalize(v4_sub(pixel, origin));
+            
             Ray r = {};
-            r.origin = ray_origin;
-            r.direction = v4_normalize(v4_sub(position, ray_origin));
+            r.origin = origin;
+            r.direction = direction;
 
-            Tvalue t = ray_intersect_sphere(r, s);
-
-            if(t.hit)
+            WorldIntersects xs = intersect_world(&world, &r);
+            if(xs.intersect_count > 0)
             {
-                f32 tmin = 0.0f;
-                if((t.t1 > 0) && (t.t1 < t.t2))
+                f32 lowest_so_far = FLT_MAX;
+                int lowest_index = 0;
+                for(int intersect_index = 0;
+                    intersect_index < xs.intersect_count;
+                    ++intersect_index)
                 {
-                    tmin = t.t1;
+                    if(xs.t_values[intersect_index].t < lowest_so_far)
+                    {
+                        lowest_so_far = xs.t_values[intersect_index].t;
+                        lowest_index = intersect_index;
+                    }
                 }
-                else if((t.t2 > 0) && (t.t2 < t.t1))
-                {
-                    tmin = t.t2;
-                }
-
-                v4 point = ray_position(r, tmin);
-                v4 normal = normal_at_point(s, point);
-                v4 eye = v4_neg(r.direction);
-                v3 color = lightning(s.material, light, point, eye, normal);
-                
+                Computation comp = prepare_computation(&world, xs.t_values[lowest_index], &r);
+                    
+                v4 point = comp.point;
+                v4 normal = comp.normalv;
+                v4 eye = comp.eyev;
+                v3 color = lightning(&world, world.spheres[comp.object_index].material, point, eye, normal);
                 *Out++ = pack_color_little(color);
             }
             else

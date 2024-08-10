@@ -41,6 +41,39 @@ typedef struct
     v4 position;
 } PointLight;
 
+typedef struct
+{
+    u32 object_count;
+    
+    u32 sphere_count;
+    Sphere *spheres;
+
+    u32 light_count;
+    PointLight *lights;
+    
+} World;
+
+typedef struct
+{
+    f32 t;
+    int object_index;
+} X;
+
+typedef struct
+{
+    X t_values[256];
+    int intersect_count;
+} WorldIntersects;
+
+typedef struct
+{
+    f32 t;
+    int object_index;
+    bool inside;
+    v4 point;
+    v4 eyev;
+    v4 normalv;
+} Computation;
 
 extern inline v4 ray_position(Ray ray, f32 t)
 {
@@ -123,38 +156,84 @@ extern inline Sphere sphere(v3 center, f32 radius)
     return(result);
 }
 
-extern inline v3 lightning(Material material, PointLight light, v4 point, v4 eyev, v4 normalv)
+extern inline v3 lightning(World *world, Material material, v4 point, v4 eyev, v4 normalv)
 {
     v3 diffuse = {0.0f, 0.0f, 0.0f};
     v3 specular = {0.0f, 0.0f, 0.0f};
-    
-    v3 effective_color = v3_mul(material.color, light.intensity);
-    v4 lightv = v4_normalize(v4_sub(light.position, point));
-    v3 ambient = v3_scalar_mul(effective_color, material.ambient);
-    f32 light_dot_normal = v4_dot(lightv, normalv);
-    
-    if(light_dot_normal < 0)
+    v3 ambient = {0.0f, 0.0f, 0.0f};
+
+    for(int light_index = 0;
+        light_index < world->light_count;
+        ++light_index)
     {
-        diffuse = V3(0.0f, 0.0f, 0.0f);
-        specular = V3(0.0f, 0.0f, 0.0f); 
-    }
-    else
-    {
-        diffuse = v3_scalar_mul(effective_color, (material.diffuse * light_dot_normal));
-        v4 reflectv = v4_reflect(v4_neg(lightv), normalv);
-        f32 reflect_dot_eye = v4_dot(reflectv, eyev);
-        if(reflect_dot_eye <= 0)
+        PointLight light = world->lights[light_index];
+        v3 effective_color = v3_mul(material.color, light.intensity);
+        ambient = v3_add(ambient, v3_scalar_mul(effective_color, material.ambient));
+        
+        v4 lightv = v4_normalize(v4_sub(light.position, point));
+        f32 light_dot_normal = v4_dot(lightv, normalv);
+    
+        if(light_dot_normal < 0)
         {
-            specular = V3(0.0f, 0.0f, 0.0f); 
+            // do nothing
         }
         else
         {
-            f32 factor = POW(reflect_dot_eye, material.shininess);
-            specular = v3_scalar_mul(light.intensity, material.specular * factor);
+            diffuse = v3_add(diffuse, v3_scalar_mul(effective_color, (material.diffuse * light_dot_normal)));
+            v4 reflectv = v4_reflect(v4_neg(lightv), normalv);
+            f32 reflect_dot_eye = v4_dot(reflectv, eyev);
+            if(reflect_dot_eye <= 0)
+            {
+                // do nothing
+            }
+            else
+            {
+                f32 factor = POW(reflect_dot_eye, material.shininess);
+                specular = v3_add(specular, v3_scalar_mul(light.intensity, material.specular * factor));
+            }
         }
     }
 
     v3 result = v3_add(ambient, v3_add(diffuse, specular));
+    return(result);
+}
+
+extern inline v3 origin()
+{
+    return(V3(0.0f, 0.0f, 0.0f));
+}
+
+
+typedef struct
+{
+    u32 h_size;
+    u32 v_size;
+    f32 field_of_view;
+    f32 half_width, half_height;
+    f32 pixel_size;
+    m4x4 transform;
+} Camera;
+
+extern inline Camera camera(u32 h_size, u32 v_size, f32 field_of_view)
+{
+    Camera result = {};
+    result.h_size = h_size;
+    result.v_size = v_size;
+    
+    result.transform = m4x4_identity();
+    f32 half_view = TAN(field_of_view / 2);
+    f32 aspect_ratio = (f32)h_size / (f32)v_size;
+    if(aspect_ratio >= 1)
+    {
+        result.half_width = half_view;
+        result.half_height = half_view / aspect_ratio;
+    }
+    else
+    {
+        result.half_width = half_view * aspect_ratio;
+        result.half_height = half_view;
+    }
+    result.pixel_size = (result.half_width * 2)  / (f32)result.h_size;
     return(result);
 }
 

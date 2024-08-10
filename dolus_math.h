@@ -275,7 +275,7 @@ typedef struct
 
 extern inline v4 V4(f32 A, f32 B, f32 C, f32 D)
 {
-    v4 result;
+    v4 result = {};
 
     result.x = A;
     result.y = B;
@@ -287,7 +287,7 @@ extern inline v4 V4(f32 A, f32 B, f32 C, f32 D)
 
 extern inline v4 v4_add(v4 A, v4 B)
 {
-    v4 result;
+    v4 result = {};
     result.x = A.x + B.x;
     result.y = A.y + B.y;
     result.z = A.z + B.z;
@@ -297,7 +297,7 @@ extern inline v4 v4_add(v4 A, v4 B)
 
 extern inline v4 v4_sub(v4 A, v4 B)
 {
-    v4 result;
+    v4 result = {};
     result.x = A.x - B.x;
     result.y = A.y - B.y;
     result.z = A.z - B.z;
@@ -317,7 +317,7 @@ extern inline v4 v4_mul(v4 A, v4 B)
 
 extern inline v4 v4_neg(v4 A)
 {
-    v4 result;
+    v4 result = {};
     result.x = -A.x;
     result.y = -A.y;
     result.z = -A.z;
@@ -327,7 +327,7 @@ extern inline v4 v4_neg(v4 A)
 
 extern inline v4 v4_scalar_mul(v4 A, f32 S)
 {
-    v4 result;
+    v4 result = {};
     result.x = A.x * S;
     result.y = A.y * S;
     result.z = A.z * S;
@@ -338,7 +338,7 @@ extern inline v4 v4_scalar_mul(v4 A, f32 S)
 
 extern inline v4 v4_scalar_div(v4 A, f32 S)
 {
-    v4 result;
+    v4 result = {};
     f32 inv = 1/S;
     result.x = A.x * inv;
     result.y = A.y * inv;
@@ -350,7 +350,7 @@ extern inline v4 v4_scalar_div(v4 A, f32 S)
 
 extern inline v4 v4_scalar_add(v4 A, f32 S)
 {
-    v4 result;
+    v4 result = {};
     result.x = A.x + S;
     result.y = A.y + S;
     result.z = A.z + S;
@@ -382,9 +382,21 @@ extern inline v4 v4_normalize(v4 A)
     return(result);
 }
 
+extern inline v4 v4_cross(v4 A, v4 B)
+{
+    v4 result = {};
+
+    result.x = A.y * B.z - A.z * B.y;
+    result.y = A.z * B.x - A.x * B.z;
+    result.z = A.x * B.y - A.y * B.x;
+    result.w = 0.0f;
+
+    return(result);
+}
+
 extern inline v3 v4_v3(v4 A)
 {
-    v3 result;
+    v3 result = {};
     result.x = A.x;
     result.y = A.y;
     result.z = A.z;
@@ -409,6 +421,11 @@ extern inline f32 POW(f32 B, f32 P)
     f32 result = (f32)pow(B, P);
 
     return(result);
+}
+
+extern inline f32 TAN(f32 R)
+{
+    return((f32)tan(R));
 }
 
 extern inline f32 clamp(f32 num, f32 min, f32 max)
@@ -718,9 +735,9 @@ extern inline m4x4 m4x4_rotateX_matrix(f32 r)
 {
     m4x4 result = {};
 
-	result.rows[0] = V4(0.0, 0.0, 0.0, 0.0);
+	result.rows[0] = V4(1.0, 0.0, 0.0, 0.0);
 	result.rows[1] = V4(0.0, cosf(r), -sinf(r), 0.0);
-	result.rows[2] = V4(0.0, sinf(r), cos(r), 0.0);
+	result.rows[2] = V4(0.0, sinf(r), cosf(r), 0.0);
 	result.rows[3] = V4(0.0, 0.0, 0.0, 1.0);
 
     return(result);
@@ -759,6 +776,31 @@ extern inline v4 m4x4_mul_v4(m4x4 mat, v4 v)
 
     return(result);
 }
+
+extern inline m4x4 view_transform(v4 from, v4 to, v4 up)
+{
+    m4x4 result = {};
+    v4 forward = v4_normalize(v4_sub(to, from));
+    v4 left = v4_cross(forward, v4_normalize(up));
+    v4 true_up = v4_cross(left, forward);
+
+    m4x4 orientation = {};
+    orientation.rows[0] = V4(left.x, left.y, left.z, 0);
+    orientation.rows[1] = V4(true_up.x, true_up.y, true_up.z, 0);
+    orientation.rows[2] = V4(-forward.x,-forward.y,-forward.z,0);
+    orientation.rows[3] = V4(0, 0, 0, 1);
+
+    m4x4 translation = {};
+    translation.rows[0] = V4(1, 0, 0, -from.x);
+    translation.rows[1] = V4(0, 1, 0, -from.y);
+    translation.rows[2] = V4(0, 0, 1, -from.z);
+    translation.rows[3] = V4(0, 0, 0, 1);
+
+    result = m4x4_mul(orientation, translation);
+    
+    return(result);
+}
+
 
 extern inline v4 v4_transform(m4x4 m, v4 v)
 {
