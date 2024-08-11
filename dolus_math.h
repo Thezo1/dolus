@@ -11,6 +11,7 @@
 #define F32MAX FLT_MAX
 #define F32MIN -FLT_MAX
 #define PI32 3.14159265358979f
+#define EPSILON 0.001f
 
 typedef float f32;
 typedef double f64;
@@ -362,6 +363,12 @@ extern inline v4 v4_scalar_add(v4 A, f32 S)
 extern inline f32 v4_dot(v4 A, v4 B)
 {
     f32 result = A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w;
+    return(result);
+}
+
+extern inline f32 v4_length(v4 A)
+{
+    f32 result = square_root(v4_dot(A, A));
     return(result);
 }
 

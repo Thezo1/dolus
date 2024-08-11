@@ -135,6 +135,7 @@ internal Computation prepare_computation(World *world, X intersection, Ray *ray)
     result.point = ray_position(*ray, result.t);
     result.eyev = v4_neg(ray->direction);
     result.normalv = normal_at_point(sphere, result.point);
+    result.over_point = v4_add(result.point, (v4_scalar_mul(result.normalv, EPSILON)));    
     if(v4_dot(result.normalv, result.eyev) < 0)
     {
         result.inside = true;
@@ -163,19 +164,19 @@ internal WorldIntersects intersect_world(World *world, Ray *ray)
         if(t.hit)
         {
             X t_value = {};
-            if(t.t1 > 0)
+            if(t.t1 > EPSILON)
             {
                 t_value.t = t.t1;
                 t_value.object_index = sphere_index;
                 result.t_values[result.intersect_count++] = t_value;
-                if(t.t2 > 0)
+                if(t.t2 > EPSILON)
                 {
                     t_value.t = t.t2;
                     t_value.object_index = sphere_index;
                     result.t_values[result.intersect_count++] = t_value;
                 }
             }
-            else if(t.t2 > 0)
+            else if(t.t2 > EPSILON)
             {
                 t_value.t = t.t2;
                 t_value.object_index = sphere_index;
@@ -184,6 +185,86 @@ internal WorldIntersects intersect_world(World *world, Ray *ray)
         }
     }
 
+    return(result);
+}
+
+internal v3 lightning(World *world, Material material, v4 point, v4 eyev, v4 normalv)
+{
+    v3 diffuse = {0.0f, 0.0f, 0.0f};
+    v3 specular = {0.0f, 0.0f, 0.0f};
+    v3 ambient = {0.0f, 0.0f, 0.0f};
+
+    for(int light_index = 0;
+        light_index < world->light_count;
+        ++light_index)
+    {
+        PointLight light = world->lights[light_index];
+        
+        /// NOTE: test for shadows
+        v4 V = v4_sub(light.position, point);
+        f32 distance = v4_length(V);
+        v4 direction = v4_normalize(V);
+
+        Ray r = {};
+        r.origin = point;
+        r.direction = direction;
+
+        bool is_shadowed = false;
+        WorldIntersects xs = intersect_world(world, &r);
+        if(xs.intersect_count > 0)
+        {
+            f32 lowest_so_far = FLT_MAX;
+            for(int intersect_index = 0;
+                intersect_index < xs.intersect_count;
+                ++intersect_index)
+            {
+                // TODO: when I begin to check for -ve hits, refactor?
+                if(xs.t_values[intersect_index].t < lowest_so_far)
+                {
+                    lowest_so_far = xs.t_values[intersect_index].t;
+                }
+            }
+
+            if(lowest_so_far < distance)
+            {
+                is_shadowed = true;
+            }
+            else
+            {
+                is_shadowed = false;
+            }
+        }
+
+        v3 effective_color = v3_mul(material.color, light.intensity);
+        ambient = v3_add(ambient, v3_scalar_mul(effective_color, material.ambient));
+        if(!is_shadowed)
+        {
+            v4 lightv = v4_normalize(v4_sub(light.position, point));
+            f32 light_dot_normal = v4_dot(lightv, normalv);
+    
+            if(light_dot_normal < 0)
+            {
+                // do nothing
+            }
+            else
+            {
+                diffuse = v3_add(diffuse, v3_scalar_mul(effective_color, (material.diffuse * light_dot_normal)));
+                v4 reflectv = v4_reflect(v4_neg(lightv), normalv);
+                f32 reflect_dot_eye = v4_dot(reflectv, eyev);
+                if(reflect_dot_eye <= 0)
+                {
+                    // do nothing
+                }
+                else
+                {
+                    f32 factor = POW(reflect_dot_eye, material.shininess);
+                    specular = v3_add(specular, v3_scalar_mul(light.intensity, material.specular * factor));
+                }
+            }
+        }
+    }
+
+    v3 result = v3_add(ambient, v3_add(diffuse, specular));
     return(result);
 }
 
@@ -198,7 +279,10 @@ int main(int argc, char *argv[])
     ImageU32 image = {};
     image.width = 1280;
     image.height = 750;
+    // image.width = 100;
+    // image.height = 50;
 
+    
     // scene
     m4x4 transform = m4x4_scale_matrix(V3(10.0f, 0.01f, 10.0f));
     
@@ -229,14 +313,14 @@ int main(int argc, char *argv[])
     right_wall.material = floor.material;
 
     Sphere middle = sphere(origin(), 1.0f);
-    middle.material.color = V3(0.1f, 1.0f, 0.5f);
+    middle.material.color = V3(1.0f, 0.435f, 0.380f);
     middle.material.diffuse = 0.7f;
     middle.material.specular = 0.3f;
     transform = m4x4_translation_matrix(V3(-0.5f, 1.0f, 0.5f));
     set_sphere_transform(&middle, transform);
 
     Sphere right = sphere(origin(), 1.0f);
-    right.material.color = V3(0.5f, 1.0f, 0.5f);
+    right.material.color = V3(0.816f, 0.549f, 0.549f);
     right.material.diffuse = 0.7f;
     right.material.specular = 0.3f;
     
@@ -244,7 +328,7 @@ int main(int argc, char *argv[])
     set_sphere_transform(&right, transform);
 
     Sphere left = sphere(origin(), 1.0f);
-    left.material.color = V3(0.5f, 0.3f, 0.01f);
+    left.material.color = V3(0.98f, 0.50f, 0.45f);
     left.material.diffuse = 0.7f;
     left.material.specular = 0.3f;
     
@@ -313,6 +397,7 @@ int main(int argc, char *argv[])
 
     // NOTE: The y axis is flipped, that's why I am using top to bottom in y
     u32 *Out = image.pixels;
+    printf("The rays are casting\n");
     for( int y = image.height - 1;
          y > 0;
          --y)
@@ -354,9 +439,10 @@ int main(int argc, char *argv[])
                 }
                 Computation comp = prepare_computation(&world, xs.t_values[lowest_index], &r);
                     
-                v4 point = comp.point;
+                v4 point = comp.over_point;
                 v4 normal = comp.normalv;
                 v4 eye = comp.eyev;
+
                 v3 color = lightning(&world, world.spheres[comp.object_index].material, point, eye, normal);
                 *Out++ = pack_color_little(color);
             }
@@ -365,11 +451,12 @@ int main(int argc, char *argv[])
                 *Out++ = pack_color_little(BackgroundColor);
             }
         }
+        printf("\rThe rays are casting: row %d...   ", y);
     }
 
     save_to_bpm(image, "output.bmp");
     // save_to_ppm(image, "output.ppm");
     
-    printf("Hello Dolus\n");
+    printf("\nHello Dolus\n");
     return(0);
 }
